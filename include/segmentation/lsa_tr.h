@@ -1,0 +1,246 @@
+/* LSA TR C++ implementation */
+// Eigen
+#include <eigen3/Eigen/Dense>
+
+#include <stdlib.h>
+#include <cmath>
+#include <limits.h>
+#include <time.h>
+#include <algorithm>
+#include <boost/format.hpp>
+
+// Boost
+#include <boost/config.hpp>
+#include <iostream>
+#include <vector>
+#include <utility>
+#include <boost/graph/adjacency_list.hpp>
+#include <boost/graph/connected_components.hpp>
+#include <boost/math/special_functions/fpclassify.hpp>
+
+
+const double LAMBDA_LAGRANGIAN = 0.1;   
+const double REDUCTION_RATIO_THRESHOLD = 0.25;
+const double MAX_LAMBDA_LAGRANGIAN = 1e5;
+const double LAMBDA_MULTIPLIER = 1.5;
+const double PRECISION_COMPARE_GEO_LAMBDA = 1e-9;
+const double LAMBDA_LAGRANGIAN_RESTART = 0.1;
+
+double computeEnergy(const Eigen::VectorXf &unary, const Eigen::MatrixXf &pairwise, const Eigen::VectorXf &labelling);
+void computeApproxUnaryTerms(uint32_t size_n, Eigen::VectorXf* approxUnary, const Eigen::VectorXf &unary, const Eigen::MatrixXf &pairwise, const Eigen::VectorXf &currLabeling);
+double computeApproxEnergy(const Eigen::VectorXf &approxUnary, const Eigen::VectorXf &labeling);
+void computeApproxLabeling(uint32_t size_n, Eigen::VectorXf* lambdaLabeling, double lambda, const Eigen::VectorXf &approxUnary, const Eigen::VectorXf &currLabeling);
+void findMinimalChangeBreakPoint(uint32_t size_n, double* bestLambda, Eigen::VectorXf* bestLabeling, const Eigen::VectorXf &approxUnary, const Eigen::VectorXf &currLabeling, double currlambda);
+void LSA_TR(double* outputEnergy, Eigen::VectorXf* outputLabeling, uint32_t size_n, const Eigen::VectorXf &unary, const Eigen::MatrixXf &pairwise, const Eigen::VectorXf &initLabeling);
+
+/*
+int main (int argc, char ** argv){
+
+	uint32_t size_n = 3;
+	
+	float* pUnary;
+	pUnary = new float[3];
+	pUnary[0] = -0.5;
+	pUnary[1] = -0.25;
+	pUnary[2] = -0.75;	
+        
+	Eigen::VectorXf unary = Eigen::Map<Eigen::MatrixXf> (pUnary, size_n, 1);
+        Eigen::MatrixXf pairwise(size_n,size_n); 
+        pairwise = Eigen::MatrixXf::Zero(size_n, size_n);
+	
+	//Eigen::VectorXf unary(size_n);        
+	//unary(0) = -0.5;
+	//unary(1) = -0.25;
+	//unary(2) = -0.75;
+
+        pairwise(0,1) = 1;
+	pairwise(1,0) = 1;
+        pairwise(0,2) = 1;
+	pairwise(2,0) = 1;
+	
+
+        Eigen::VectorXf initLabeling(size_n);
+	initLabeling = Eigen::VectorXf::Ones(size_n);
+	//initLabeling(1) = 1;
+        Eigen::VectorXf finalLabeling(size_n);
+	double finalEnergy = 0;
+        LSA_TR(&finalEnergy, &finalLabeling, size_n, unary, pairwise, initLabeling);
+	std::cout << "Final energy " << finalEnergy << "\n";
+	std::cout << "Final labeling " << finalLabeling.transpose() << "\n";
+	return 0;
+}
+*/
+
+// unary is a nx2 matrix, pairwise is a nxn matrix
+void LSA_TR(double* outputEnergy, Eigen::VectorXf* outputLabeling, uint32_t size_n, 
+	    const Eigen::VectorXf &unary, const Eigen::MatrixXf &pairwise, const Eigen::VectorXf &initLabeling){
+
+	Eigen::VectorXf currLabeling;
+	currLabeling = initLabeling;
+	Eigen::VectorXf lambdaLabeling;
+	double currEnergy = computeEnergy(unary, pairwise, currLabeling);
+	double lambdaEnergy = 0;
+	Eigen::VectorXf approxUnary(size_n);
+	computeApproxUnaryTerms(size_n, &approxUnary, unary, pairwise, currLabeling);
+	double lambda = LAMBDA_LAGRANGIAN;
+	double actualReduction = 0;
+	double predictedReduction = 0;
+        bool stopFlag = false;
+ 	while (stopFlag==false){
+                //std::cout << ".";
+
+                //Compute lamda Labelling
+		computeApproxLabeling(size_n, &lambdaLabeling, lambda, approxUnary, currLabeling);
+                double currApproxE = computeApproxEnergy(approxUnary, currLabeling);
+                double lambdaApproxE = computeApproxEnergy(approxUnary, lambdaLabeling);
+		predictedReduction = currApproxE - lambdaApproxE;
+		if (predictedReduction < 0){
+			std::cout << "Negative reduction \n";
+			stopFlag = true;
+		}
+		bool updateSolutionFlag = false;
+
+		// there is no updates, find another breaking point (ie smaller lambda)
+		if (lambdaLabeling == currLabeling){
+                        //std::cout << "\n Finding new break point \n"; 
+			findMinimalChangeBreakPoint(size_n, &lambda, &lambdaLabeling, approxUnary, currLabeling, lambda);
+			lambdaApproxE = computeApproxEnergy(approxUnary, lambdaLabeling);
+			lambdaEnergy = computeEnergy(unary, pairwise, lambdaLabeling);
+			double temp = computeEnergy(unary, pairwise, currLabeling);
+
+
+			predictedReduction = currApproxE - lambdaApproxE;
+			if (predictedReduction < 0){
+				std::cout << "Negative predicted reduction \n";
+				stopFlag = true;
+			}
+			actualReduction = currEnergy - lambdaEnergy;
+			if (actualReduction <= 0 || lambdaLabeling.sum()== 0 || lambdaLabeling.sum()== size_n){
+				stopFlag = true;
+				std::cout << "Optimization done! \n";
+			}else{
+				if (lambda == 0) lambda = LAMBDA_LAGRANGIAN_RESTART;
+				updateSolutionFlag = true;
+			}	
+
+		}else{
+			// Compute actual energy with lambda labeling
+			lambdaEnergy = computeEnergy(unary, pairwise, lambdaLabeling);
+			actualReduction = currEnergy - lambdaEnergy;
+			if (actualReduction <= 0) updateSolutionFlag = false;
+			else{
+				 updateSolutionFlag = true;
+			}
+		}
+
+		// If we don't stop, update solution, re-adjust lamdba parameter.
+		if (stopFlag == false){
+			double reductionRatio = actualReduction/predictedReduction;
+			if (reductionRatio < REDUCTION_RATIO_THRESHOLD){
+				if (lambda < MAX_LAMBDA_LAGRANGIAN)
+					lambda *= LAMBDA_MULTIPLIER;					
+			}
+			else{
+				if (lambda > PRECISION_COMPARE_GEO_LAMBDA)
+					lambda /= LAMBDA_MULTIPLIER;
+			}
+  			// Update solution
+			if (updateSolutionFlag == true){
+				currLabeling = lambdaLabeling;
+				currEnergy =  lambdaEnergy;
+   				computeApproxUnaryTerms(size_n, &approxUnary, unary, pairwise, currLabeling);
+			}	
+		}
+	}
+        //std::cout << "\n";
+	*outputEnergy = currEnergy;
+	*outputLabeling = currLabeling;
+}
+
+double computeEnergy(const Eigen::VectorXf &unary, const Eigen::MatrixXf &pairwise, const Eigen::VectorXf &labeling){
+
+	double UE = unary.dot(labeling);
+        double PE = 0;
+        Eigen::VectorXf  temp = labeling.transpose()*pairwise;
+        PE = temp.dot(labeling);        
+        return UE + PE;
+}
+
+double computeApproxEnergy(const Eigen::VectorXf &approxUnary, const Eigen::VectorXf &labeling){
+
+	double E = approxUnary.dot(labeling);
+        return E;
+}
+
+void computeApproxLabeling(uint32_t size_n, Eigen::VectorXf* lambdaLabeling, double lambda,
+			  const Eigen::VectorXf &approxUnary, const Eigen::VectorXf &currLabeling){
+
+	// Hamming distance from the current labelling
+	Eigen::MatrixXf distUE(2,size_n);
+	distUE = Eigen::MatrixXf::Zero(2,size_n);
+	distUE.row(0) = currLabeling;
+	distUE.row(1) = Eigen::VectorXf::Ones(size_n) - currLabeling;
+
+	Eigen::MatrixXf approxUnaryAll(2, size_n);
+	approxUnaryAll.row(0) = lambda*distUE.row(0);
+	approxUnaryAll.row(1) = approxUnary.transpose() + lambda*distUE.row(1);
+
+	Eigen::VectorXf temp = approxUnaryAll.row(0) - approxUnaryAll.row(1);
+	*lambdaLabeling = (temp.array() < 0).select(Eigen::VectorXf::Zero(size_n),Eigen::VectorXf::Ones(size_n));
+}
+
+void computeApproxUnaryTerms(uint32_t size_n, Eigen::VectorXf* approxUnary,
+			     const Eigen::VectorXf &unary, const Eigen::MatrixXf &pairwise, const Eigen::VectorXf &currLabeling){
+        Eigen::VectorXf approxPairwise = currLabeling.transpose()*pairwise;
+	*approxUnary = unary.transpose() + 2*approxPairwise.transpose();
+}
+
+
+void findMinimalChangeBreakPoint(uint32_t size_n, double* bestLambda, Eigen::VectorXf* bestLabeling,
+				 const Eigen::VectorXf &approxUnary, const Eigen::VectorXf &currLabeling, double currlambda){
+
+	bool foundLambda = false;
+
+	// Hamming distance from the current labelling
+	Eigen::MatrixXf distUE(2,size_n);
+	distUE = Eigen::MatrixXf::Zero(2,size_n);
+	distUE.row(0) = currLabeling;
+	distUE.row(1) = Eigen::VectorXf::Ones(size_n) - currLabeling;
+
+	double topLambda = currlambda;
+	Eigen::VectorXf topLabeling;
+	computeApproxLabeling(size_n, &topLabeling, topLambda, approxUnary, currLabeling);
+
+	while (topLabeling != currLabeling){
+		topLambda *= LAMBDA_MULTIPLIER;
+		computeApproxLabeling(size_n, &topLabeling, topLambda, approxUnary, currLabeling);
+	}
+
+	double bottomLambda = PRECISION_COMPARE_GEO_LAMBDA;
+	Eigen::VectorXf bottomLabeling;
+	computeApproxLabeling(size_n, &bottomLabeling, bottomLambda, approxUnary, currLabeling);
+
+	while (foundLambda==false){
+		double middleLambda = 0.5*topLambda + 0.5*bottomLambda;
+		
+		Eigen::VectorXf middleLabeling;
+		computeApproxLabeling(size_n, &middleLabeling, middleLambda, approxUnary, currLabeling);
+		if (middleLabeling != topLabeling){
+			bottomLambda = middleLambda;
+			bottomLabeling = middleLabeling;
+		}else if (middleLabeling != bottomLabeling){
+			topLambda = middleLambda;
+			topLabeling = middleLabeling;
+		}else{
+			foundLambda = true;
+		}
+		if ((topLambda - bottomLambda) < PRECISION_COMPARE_GEO_LAMBDA)	foundLambda = true;	
+	}
+	*bestLambda = bottomLambda;
+	*bestLabeling = bottomLabeling;
+}
+
+
+
+
+
