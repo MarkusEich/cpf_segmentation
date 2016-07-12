@@ -1,13 +1,9 @@
 # cpf_segmentation
-ROS node library for unsupervised segmentation of 3D points via Constrained Plane Fitting
+C++ library for unsupervised segmentation of 3D points via Constrained Plane Fitting
 
 If you want to cite this work, you can use the bibtex entry below
 
 ```
-Unsupervised Segmentation of Dense Indoor 3D Maps
-via Constrained Plane Fitting
-Trung T. Pham 1 , Markus Eich 2 , Ian Reid 1 , Gordon Wyeth 2
-
 @inproceedings{Pham2016,
 abstract = {Research on SLAM is now able to reliably recon-
 struct dense 3D geometric maps of indoor scenes with a depth
