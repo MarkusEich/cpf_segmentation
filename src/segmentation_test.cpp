@@ -63,13 +63,19 @@ int main(int argc, char** argv){
     pcl::console::parse (argc, argv, "-sc", config.smooth_cost);
     pcl::console::parse (argc, argv, "-oc", config.outlier_cost);
 
+    if (pcl::console::find_switch (argc, argv, "-h")){
+      PCL_INFO ("Options: \n \t -v : voxel resolution\n \t -s : seed resolution\n \t -c : color importance\n \t -z : spatial importance \n \t -n : normal importance\n \t -lc : label cost\n \t -sc : smooth cost\n \t -oc : outlier cost\n");	       
+	      exit (0);
+    }
+	              
+
     seg.setConfig(config);
 
 
     /// -----------------------------------|  Preparations  |-----------------------------------
 
     if (argc<2){
-        PCL_ERROR ("ERROR: wrong number or arguments provided.\n");
+        PCL_ERROR ("ERROR: wrong number or arguments provided.Use -h to show options.\n");
         exit (-1);
     }
 
