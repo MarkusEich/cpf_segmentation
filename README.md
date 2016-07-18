@@ -1,5 +1,29 @@
 # cpf_segmentation
-C++ library for unsupervised segmentation of 3D points via Constrained Plane Fitting
+C++ library for unsupervised segmentation of 3D points via Constrained Plane Fitting.
+
+To copile and use the library go to the src folder and 
+
+```
+mkdir build
+cd build
+cmake ..
+make
+sudo make install
+```
+
+Make sure that $LD_LIBRARY_PATH is pointing to the install folder (/usr/local/lib by default).
+
+To very that everytrhing is set up properly use
+
+```
+pkg-config --list-all | grep segmentation
+```
+
+To test the library, run 
+
+```
+segmentation_test pointcloud.pcd 
+```
 
 If you want to cite this work, you can use the bibtex entry below
 
