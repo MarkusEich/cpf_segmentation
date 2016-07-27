@@ -36,13 +36,11 @@
  */
 
 #include <iostream>
-
 #include <segmentation/segmentation.hpp>
-
+#include <pcl/filters/voxel_grid.h>
 
 
 using namespace std;
-
 using namespace APC;
 
 
@@ -100,14 +98,32 @@ int main(int argc, char** argv){
     }
     std::cerr << "Number of points: " << input_cloud_ptr->size() << std::endl;
 
-
-    seg.setPointCloud(input_cloud_ptr);
+    pcl::PointCloud<PointT>::Ptr cloud_filtered (new pcl::PointCloud<PointT>);
+    pcl::VoxelGrid<PointT> sor;
+    sor.setInputCloud(input_cloud_ptr);
+    sor.setLeafSize (0.01f, 0.01f, 0.01f);
+    sor.filter(*cloud_filtered);
+    std::cerr << "Number of points after filtered " << cloud_filtered->size() << std::endl;
+    seg.setPointCloud(cloud_filtered);
 
     seg.doSegmentation();
 
         pcl::PointCloud<pcl::PointXYZL>::Ptr segmented_cloud_ptr;
 
         segmented_cloud_ptr=seg.getSegmentedPointCloud();
+	
+	pcl::PointCloud<pcl::PointXYZL> segmented_cloud2;
+
+        pcl::copyPointCloud(*segmented_cloud_ptr, segmented_cloud2);
+        segmented_cloud2.clear();
+
+        BOOST_FOREACH (pcl::PointXYZL point, *segmented_cloud_ptr) {
+        	if (point.label == 0) continue;
+                segmented_cloud2.push_back(point);
+       
+        }
+
+        pcl::PointCloud<pcl::PointXYZL>::Ptr segmented_cloud2_ptr = segmented_cloud2.makeShared();
 
         bool output_specified = pcl::console::find_switch (argc, argv, "-o");
         if (output_specified)
@@ -127,7 +143,7 @@ int main(int argc, char** argv){
             outputname+="_seg.pcd";
             PCL_INFO ("Saving output\n");
             bool save_binary_pcd = false;
-            pcl::io::savePCDFile (outputname, *segmented_cloud_ptr, save_binary_pcd);
+            pcl::io::savePCDFile (outputname, segmented_cloud2, save_binary_pcd);
         }
 
         /// -----------------------------------|  Visualization  |-----------------------------------
@@ -137,13 +153,13 @@ int main(int argc, char** argv){
             /// Configure Visualizer
             pcl::visualization::PCLVisualizer::Ptr viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
             viewer->setBackgroundColor (0, 0, 0);
-            viewer->addPointCloud (segmented_cloud_ptr, "Segmented point cloud");
+            viewer->addPointCloud (segmented_cloud2_ptr, "Segmented point cloud");
 
             PCL_INFO ("Loading viewer\n");
             while (!viewer->wasStopped ())
             {
                 viewer->spinOnce (100);
-                viewer->updatePointCloud (segmented_cloud_ptr, "Segmented point cloud");
+                viewer->updatePointCloud (segmented_cloud2_ptr, "Segmented point cloud");
                 boost::this_thread::sleep (boost::posix_time::microseconds (100000));
             }
         }

@@ -60,21 +60,20 @@ void Segmentation::doSegmentation(){
     super.setNormalImportance (config_.normal_importance);
       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
 
-      PCL_INFO ("Extracting supervoxels\n");
+      PCL_INFO ("Extracting supervoxels...\n");
       super.extract (supervoxel_clusters);
 
-    if (config_.use_supervoxel_refinement)
+      if (config_.use_supervoxel_refinement)
       {
           PCL_INFO ("Refining supervoxels\n");
           super.refineSupervoxels (2, supervoxel_clusters);
       }
       std::cout << "Number of supervoxels: " << supervoxel_clusters.size () << "\n";
 
-      PCL_INFO ("Getting supervoxel adjacency\n");
       std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
       super.getSupervoxelAdjacency (supervoxel_adjacency);
-    pcl::PointCloud<pcl::PointNormal>::Ptr sv_centroid_normal_cloud = pcl::SupervoxelClustering<PointT>::makeSupervoxelNormalCloud (supervoxel_clusters);
-      std::cout << "Time taken at super-voxel segmentation: " << (double)(clock() - tStart)/CLOCKS_PER_SEC << "\n";
+      pcl::PointCloud<pcl::PointNormal>::Ptr sv_centroid_normal_cloud = pcl::SupervoxelClustering<PointT>::makeSupervoxelNormalCloud (supervoxel_clusters);
+      std::cout << "Super-voxel segmentation takes: " << (double)(clock() - tStart)/CLOCKS_PER_SEC << "\n";
 
 
       /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -119,6 +118,7 @@ void Segmentation::doSegmentation(){
 
     // Plane hypothesis generation using random sampling
     if (config_.use_random_sampling){
+      std::cout << "Randomly sampling plane hypotheses...\n";
       int max_random_hyps = 100;
       int count = 0;
       int num_supervoxels = supervoxel_clusters.size ();
@@ -127,17 +127,14 @@ void Segmentation::doSegmentation(){
       while (count < max_random_hyps){
           // random sample 4 points
           std::vector<int> samples;
-          for (int s=0; s<3;s++) {
-              samples.push_back((int)(rand()%num_supervoxels+1));
-          }
-
+          int iters;
+          model_p->getSamples(iters, samples);
           Eigen::VectorXf plane_par;
           model_p->computeModelCoefficients(samples, plane_par);
-          if (plane_par.size() == 0) continue;
 
           std::set<int> test_points;
           test_points.insert((int)(rand()%num_supervoxels+1));
-            bool good_model = model_p->doSamplesVerifyModel(test_points, plane_par, config_.outlier_cost);
+          bool good_model = model_p->doSamplesVerifyModel(test_points, plane_par, config_.outlier_cost*0.5);
           if (good_model == false) continue;
 
           Eigen::Vector3f hough_par;
@@ -162,7 +159,7 @@ void Segmentation::doSegmentation(){
           count++;
       }
     }
-    std::cout << "Num of plane hypothesis generated = " << planes_coeffs.size() << "\n";
+    std::cout << "Total number of plane hypotheses generated = " << planes_coeffs.size() << "\n";
     // Assign points to planes.
     uint32_t node_ID = 0;
     std::map<uint32_t, uint32_t> label2index;
@@ -217,7 +214,7 @@ void Segmentation::doSegmentation(){
       }
       delete [] accumulator;
 
-      std::cout << "Number of planes remained after hough-based filtering = " << plane_candidates.size() << "\n";
+      std::cout << "Number of plane candidates remained after hough-based filtering = " << plane_candidates.size() << "\n";
 
           // Compute plane unary costs
           std::vector<Eigen::Vector4f> good_planes;
@@ -230,19 +227,29 @@ void Segmentation::doSegmentation(){
 
           for (size_t j = 0; j < num_planes; ++j){
               Eigen::Vector4f p_coeffs = plane_candidates.at(j);
+              Eigen::Vector3f p_normal;
+              p_normal[0] = p_coeffs[0];
+              p_normal[1] = p_coeffs[1];
+              p_normal[2] = p_coeffs[2];
               Eigen::VectorXf inliers_idx(num_super_voxels);
               Eigen::VectorXf point2plane(num_super_voxels);
               inliers_idx = Eigen::VectorXf::Zero(num_super_voxels);
               int inliers_count = 0;
               for (size_t i = 0; i < num_super_voxels; ++i){
                   pcl::PointXYZ p;
+                  Eigen::Vector3f n;
                   p.x = sv_centroid_normal_cloud->at(i).x;
                   p.y = sv_centroid_normal_cloud->at(i).y;
                   p.z = sv_centroid_normal_cloud->at(i).z;
-                  float data_cost = pcl::pointToPlaneDistance(p,p_coeffs);
+	          n[0] = sv_centroid_normal_cloud->at(i).normal_x;
+                  n[1] = sv_centroid_normal_cloud->at(i).normal_y;
+                  n[2] = sv_centroid_normal_cloud->at(i).normal_z;
+
+                  float data_cost = pcl::pointToPlaneDistance(p,p_coeffs)*(2 - std::fabs(n.dot(p_normal)));
+                  
                   point2plane(i) = data_cost;
-          if (data_cost <= config_.outlier_cost) { inliers_idx(i) = 1; inliers_count++;}
-              }
+          	  if (data_cost <= config_.outlier_cost) { inliers_idx(i) = 1; inliers_count++;}
+             }
 
         if (inliers_count >= config_.min_inliers_per_plane){
                 inliers_mat.row(good_planes_count) = inliers_idx;
@@ -250,14 +257,14 @@ void Segmentation::doSegmentation(){
                   point2plane_mat.row(good_planes_count) = point2plane;
                   good_planes.push_back(p_coeffs);
                   planes_inliers_idx.push_back(inliers_idx);
-          double u_cost = std::exp(-(double)(inliers_count - config_.min_inliers_per_plane)/(4*config_.min_inliers_per_plane)) - 1;
+                  double u_cost = std::exp(-(double)(inliers_count - config_.min_inliers_per_plane)/(4*config_.min_inliers_per_plane)) - 1;
 
                   if (isnan(u_cost)){
                       PCL_WARN("NaN Unary \n");
                   }
                   else{
                       unaries.push_back(u_cost);
-            good_planes_count++;
+            	      good_planes_count++;
                   }
 
               }
@@ -295,7 +302,6 @@ void Segmentation::doSegmentation(){
                   angle_cost = 1 - std::exp(-(90-angle)/20);
               }
 
-              //if (ov_cost == 0) angle_cost = 0;
               double p_cost = 0.25*angle_cost + 0.5*ov_cost;
               if (isnan(p_cost)){
                   PCL_WARN("NaN Pairwise \n");
@@ -315,7 +321,6 @@ void Segmentation::doSegmentation(){
         double finalEnergy = 0;
         LSA_TR(&finalEnergy, &finalLabeling, size_n, plane_unaries, plane_pairwises, initLabeling);
 
-        printf("Time taken after Constrained Plane Extraction: %.2fs\n", (double)(clock() - tStart)/CLOCKS_PER_SEC);
         if (finalEnergy == 0){
           PCL_WARN("Optimization got stuck \n");
           finalLabeling = Eigen::VectorXf::Ones(size_n);
@@ -342,8 +347,7 @@ void Segmentation::doSegmentation(){
         Eigen::Map<Eigen::MatrixXi>(data_cost, unary_matrix_int.rows(), unary_matrix_int.cols() ) = unary_matrix_int;
         GCoptimizationGeneralGraph *gc = new GCoptimizationGeneralGraph(num_super_voxels, num_labels);
         gc->setDataCost(data_cost);
-        std::cerr << "Creating graph with " << gc->numSites() << " nodes and " << gc->numLabels() << " labels \n";
-
+        
         int *smooth = new int[num_labels*num_labels];
         std::memset(smooth,10, num_labels*num_labels*sizeof(int));
         std::fill_n(smooth, num_labels*num_labels, (int)(config_.smooth_cost*config_.gc_scale));
@@ -428,7 +432,7 @@ std::vector<uint32_t> supervoxel_labels;
   uint32_t num = connected_components(G, &component[0]);
   std::cout << "Number of connected components: " << num <<"\n";
 
-  int min_voxels_per_cluster = 2;
+  int min_voxels_per_cluster = 5;
   int outlier_label = 0;
   std::map<uint32_t,uint32_t> label_list_map;
   int new_label = 1;
@@ -454,12 +458,12 @@ std::vector<uint32_t> supervoxel_labels;
 
 // Re-label the point cloud
 segmented_cloud_ptr_ = super.getLabeledCloud ();
-std::cerr << "Re-label supervoxel\n";
 std::map<uint32_t,uint32_t> label_to_seg_map;
 std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>::iterator cluster_itr_ = supervoxel_clusters.begin();
 uint32_t idx = 0;
 for (; cluster_itr_ != supervoxel_clusters.end(); cluster_itr_++){
   label_to_seg_map[cluster_itr_->first] = supervoxel_labels.at(idx);
+  //label_to_seg_map[cluster_itr_->first] = sv_labels.at(idx);
   idx++;
 }
 typename pcl::PointCloud<pcl::PointXYZL>::iterator point_itr = (*segmented_cloud_ptr_).begin();

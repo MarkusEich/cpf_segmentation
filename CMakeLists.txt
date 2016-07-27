@@ -41,6 +41,8 @@ target_link_libraries (segmentation ${PCL_LIBRARIES})
 add_executable (segmentation_test src/segmentation_test.cpp)
 target_link_libraries (segmentation_test ${PCL_LIBRARIES} segmentation)
 
+add_executable (segmentation_kinect_test src/segmentation_kinect_test.cpp)
+target_link_libraries (segmentation_kinect_test ${PCL_LIBRARIES} segmentation)
 
 CONFIGURE_FILE(./src/segmentation.pc.in segmentation.pc @ONLY)
 
