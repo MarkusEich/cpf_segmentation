@@ -1,7 +1,7 @@
 # cpf_segmentation
 C++ library for unsupervised segmentation of 3D points via Constrained Plane Fitting.
 
-To copile and use the library go to the src folder and 
+To compile and use the library go to the src folder and 
 
 ```
 mkdir build
@@ -13,7 +13,7 @@ sudo make install
 
 Make sure that $LD_LIBRARY_PATH is pointing to the install folder (/usr/local/lib by default).
 
-To very that everytrhing is set up properly use
+To verify that everyting is set up properly use
 
 ```
 pkg-config --list-all | grep segmentation
@@ -56,8 +56,7 @@ booktitle = {2016 IEEE/RSJ International Conference on Intelligent Robots and Sy
 month = {October},
 pages = {},
 publisher = {IEEE},
-title = {{Unsupervised Segmentation of Dense Indoor 3D Maps
-via Constrained Plane Fitting}},
+title = {{Geometrically Consistent Plane Extraction for Dense Indoor 3D Maps Segmentation}},
 year = {2016}
 }
 ```
