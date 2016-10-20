@@ -256,13 +256,12 @@ void Segmentation::doSegmentation(){
          point2plane_mat.row(count_idx) = point2plane;
          good_planes.push_back(p_coeffs);
          planes_inliers_idx.push_back(inliers_idx);
-         //double u_cost = std::exp(-(double)(inliers_count - config_.min_inliers_per_plane)/(4*config_.min_inliers_per_plane)) - 1;   
          double u_cost = plane_score;
          unaries.push_back(u_cost);
          count_idx++;
       }
    }
-
+   printf("End plane generation: %.2fms\n", (double)(clock() - tStart)/(CLOCKS_PER_SEC/1000));
    num_planes = unaries.size();
    if (num_planes > 1){
 
@@ -358,6 +357,7 @@ void Segmentation::doSegmentation(){
      //////////////////////////////////////////////////////////////////////////////////////////////////////////////
       }
    }
+   printf("End constrained plane extraction: %.2fms\n", (double)(clock() - tStart)/(CLOCKS_PER_SEC/1000));
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Segment the point cloud into objects
