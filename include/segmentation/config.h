@@ -32,7 +32,7 @@
  *         Trung T. Pham <trung.pham@adelaide.edu.au>
  *         Markus Eich <markus.eich@qut.edu.au>
  *
- *
+ * Last update: 20 Oct 2016
  */
 
 
@@ -43,13 +43,11 @@
 
 namespace APC {
 
-
 class Config{
-
 public:
 
     Config():voxel_resolution(0.01f),
-        seed_resolution(0.1f),
+        seed_resolution(0.05f),
         color_importance (1.0f),
         spatial_importance (0.4f),
         normal_importance  (1.0f),
@@ -57,13 +55,12 @@ public:
         use_supervoxel_refinement (false),
 
         // Default parameters for model fitting
-        use_random_sampling (true),
+        use_random_sampling (false),
         outlier_cost(0.02f),
-        smooth_cost (outlier_cost*0.1),
-        min_inliers_per_plane (50),
-        label_cost (min_inliers_per_plane*0.5*outlier_cost),
+        smooth_cost (0.001),
+        min_inliers_per_plane (100),
         max_num_iterations (25),
-        max_curvature (0.001f),
+        max_curvature (0.01f),
         gc_scale (1e4){}
 
     public:

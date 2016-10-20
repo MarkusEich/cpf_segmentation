@@ -1,8 +1,45 @@
+/*
+ * Copyright (C) 2016, Australian Centre for Robotic Vision, ACRV
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Osnabrück University nor the names of its
+ *       contributors may be used to endorse or promote products derived from
+ *       this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ *
+ *  Created on: 11.07.2016
+ *
+ *      Authors:
+ *         Trung T. Pham <trung.pham@adelaide.edu.au>
+ *         Markus Eich <markus.eich@qut.edu.au>
+ *
+ *  Last update: 20 Oct 2016
+ */
+
+
 #include <pcl/console/parse.h>
 #include <pcl/point_types.h>
 #include <pcl/visualization/pcl_visualizer.h>    
 #include <pcl/io/openni_grabber.h>
-#include <pcl/sample_consensus/sac_model_plane.h>
 #include <segmentation/segmentation.hpp>
 #include <pcl/filters/fast_bilateral.h>
 #include <pcl/filters/bilateral.h>
@@ -13,27 +50,10 @@ using namespace APC;
 typedef pcl::PointXYZRGBA PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
-// PCL viewer //
-//pcl::visualization::PCLVisualizer seg_viewer("PCL Segmentation Viewer");
-//pcl::visualization::PCLVisualizer viewer("PCL RBGD Viewer");
-
 // Mutex: //
 boost::mutex cloud_mutex;
 
 enum { COLS = 640, ROWS = 480 };
-
-int print_help()
-{
-  cout << "*******************************************************" << std::endl;
-  cout << "Ground based people detection app options:" << std::endl;
-  cout << "   --help    <show_this_help>" << std::endl;
-  cout << "   --svm     <path_to_svm_file>" << std::endl;
-  cout << "   --conf    <minimum_HOG_confidence (default = -1.5)>" << std::endl;
-  cout << "   --min_h   <minimum_person_height (default = 1.3)>" << std::endl;
-  cout << "   --max_h   <maximum_person_height (default = 2.3)>" << std::endl;
-  cout << "*******************************************************" << std::endl;
-  return 0;
-}
 
 void cloud_cb_ (const PointCloudT::ConstPtr &callback_cloud, PointCloudT::Ptr& cloud,
     bool* new_cloud_available_flag)
@@ -43,38 +63,18 @@ void cloud_cb_ (const PointCloudT::ConstPtr &callback_cloud, PointCloudT::Ptr& c
   *new_cloud_available_flag = true;
   cloud_mutex.unlock ();
 }
-
-struct callback_args{
-  // structure used to pass arguments to the callback function
-  PointCloudT::Ptr clicked_points_3d;
-  pcl::visualization::PCLVisualizer::Ptr viewerPtr;
-};
   
-void
-pp_callback (const pcl::visualization::PointPickingEvent& event, void* args)
-{
-  struct callback_args* data = (struct callback_args *)args;
-  if (event.getPointIndex () == -1)
-    return;
-  PointT current_point;
-  event.getPoint(current_point.x, current_point.y, current_point.z);
-  data->clicked_points_3d->points.push_back(current_point);
-  // Draw clicked points in red:
-  pcl::visualization::PointCloudColorHandlerCustom<PointT> red (data->clicked_points_3d, 255, 0, 0);
-  data->viewerPtr->removePointCloud("clicked_points");
-  data->viewerPtr->addPointCloud(data->clicked_points_3d, red, "clicked_points");
-  data->viewerPtr->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 10, "clicked_points");
-  std::cout << current_point.x << " " << current_point.y << " " << current_point.z << std::endl;
-}
-
 int main (int argc, char** argv)
 {
-  if(pcl::console::find_switch (argc, argv, "--help") || pcl::console::find_switch (argc, argv, "-h"))
-        return print_help();
-
 
   Segmentation seg;
   Config config;
+  config.voxel_resolution = 0.01; // 1 cm
+  config.seed_resolution = 0.05; // 5 cm
+  config.use_single_cam_transform = true;
+  config.min_inliers_per_plane = 25;
+  config.outlier_cost = 0.01;
+  config.smooth_cost = 0.001;
   seg.setConfig(config);
 
 
@@ -105,8 +105,6 @@ int main (int argc, char** argv)
     if (new_cloud_available_flag && cloud_mutex.try_lock ())    // if a new cloud is available
     {
       new_cloud_available_flag = false;
-
-      // Draw cloud and people bounding boxes in the viewer:
       viewer.removeAllPointClouds();
       viewer.removeAllShapes();
 
