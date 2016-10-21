@@ -29,27 +29,28 @@ If you want to cite this work, you can use the bibtex entry below
 
 ```
 @inproceedings{Pham2016,
-abstract = {Research on SLAM is now able to reliably recon-
-struct dense 3D geometric maps of indoor scenes with a depth
-sensor. Representing these maps in terms of meaningful entities
-is a step toward building semantic maps for autonomous robots.
-Recent work segments the 3D scene into semantic classes using
-Conditional Random Fields, which requires large 3D ground
-truth datasets to train the classification model. Also, the CRF
-inference is often computationally expensive. In this paper,
-we present a simple unsupervised method for segmentation
-of 3D maps into objects and scene structures. Specifically,
-we propose a novel constrained plane extraction algorithm
-to robustly discover the underlying planes in the scene. The
-planes are enforced to be mutually orthogonal or parallel to
-conform with the human-made indoor environments. Moreover,
-we approximate the 3D map by an adjacency graph over surface
-patches for a graph clustering based scene segmentation. We
-devise an effective classifier which utilises both the extracted
-planes and local surface convexity to classify the graph edges as
-on (the same object) or off (different objects). We reconstructed
-654 3D indoor scenes from NYU v2 sequences to validate the
-efficiency and effectiveness of our segmentation method.
+abstract = {Modern SLAM systems with a depth sensor are
+able to reliably reconstruct dense 3D geometric maps of indoor
+scenes. Representing these maps in terms of meaningful entities
+is a step towards building semantic maps for autonomous
+robots. One approach is to segment the 3D maps into semantic
+objects using Conditional Random Fields (CRF), which requires
+large 3D ground truth datasets to train the classification
+model. Additionally, the CRF inference is often computationally
+expensive. In this paper, we present an unsupervised geometricbased
+approach for the segmentation of 3D point clouds into
+objects and meaningful scene structures. We approximate an
+input point cloud by an adjacency graph over surface patches,
+whose edges are then classified as being either on or off. We
+devise an effective classifier which utilises both global planar
+surfaces and local surface convexities for edge classification.
+More importantly, we propose a novel global plane extraction
+algorithm for robustly discovering the underlying planes in the
+scene. Our algorithm is able to enforce the extracted planes
+to be mutually orthogonal or parallel which conforms usually
+with human-made indoor environments. We reconstruct 654 3D
+indoor scenes from NYUv2 sequences to validate the efficiency
+and effectiveness of our segmentation method.
 },
 author = {Pham, Trung T. and Eich, Markus and Reid, Ian and Wyeth, Gordon}
 booktitle = {2016 IEEE/RSJ International Conference on Intelligent Robots and Systems, IROS},
