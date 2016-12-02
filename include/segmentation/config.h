@@ -56,12 +56,13 @@ public:
 
         // Default parameters for model fitting
         use_random_sampling (false),
-        outlier_cost(0.02f),
+        noise_threshold(0.02f),
         smooth_cost (0.001),
         min_inliers_per_plane (100),
+	min_plane_area(0.025),
         max_num_iterations (25),
         max_curvature (0.01f),
-        gc_scale (1e4){}
+        gc_scale (1e3){}
 
     public:
 
@@ -75,9 +76,10 @@ public:
 
     // Default parameters for model fitting
     bool use_random_sampling;
-    float outlier_cost;
+    float noise_threshold;
     float smooth_cost;
     int min_inliers_per_plane;
+    float min_plane_area;	
     float label_cost;
     int max_num_iterations;
     float max_curvature;
@@ -95,9 +97,10 @@ public:
         use_supervoxel_refinement=config.use_supervoxel_refinement;
 
         use_random_sampling=config.use_random_sampling;
-        outlier_cost=config.outlier_cost;
+        noise_threshold=config.noise_threshold;
         smooth_cost=config.smooth_cost;
         min_inliers_per_plane=config.min_inliers_per_plane;
+        min_plane_area=config.min_plane_area;
         label_cost=config.label_cost;
         max_num_iterations=config.max_num_iterations;
         max_curvature=config.max_curvature;

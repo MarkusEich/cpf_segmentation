@@ -47,7 +47,7 @@
 using namespace std;
 using namespace APC;
 
-typedef pcl::PointXYZRGBA PointT;
+//typedef pcl::PointXYZRGBA PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
 // Mutex: //
@@ -73,8 +73,7 @@ int main (int argc, char** argv)
   config.seed_resolution = 0.05; // 5 cm
   config.use_single_cam_transform = true;
   config.min_inliers_per_plane = 25;
-  config.outlier_cost = 0.01;
-  config.smooth_cost = 0.001;
+  config.noise_threshold = 0.01;
   seg.setConfig(config);
 
 
@@ -82,7 +81,7 @@ int main (int argc, char** argv)
   PointCloudT::Ptr cloud (new PointCloudT);
   bool new_cloud_available_flag = false;
   pcl::Grabber* interface = new pcl::OpenNIGrabber();
-  boost::function<void (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> f =
+  boost::function<void (const pcl::PointCloud<PointT>::ConstPtr&)> f =
       boost::bind (&cloud_cb_, _1, cloud, &new_cloud_available_flag);
   interface->registerCallback (f);
   interface->start ();

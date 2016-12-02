@@ -32,7 +32,7 @@
 *         Trung T. Pham <trung.pham@adelaide.edu.au>
 *         Markus Eich <markus.eich@qut.edu.au>
 *
-*  Last update: 20 Oct 2016
+*  Last update: 30 Nov 2016
 */
 
 #include <segmentation/segmentation.hpp>
@@ -44,7 +44,7 @@ Segmentation::Segmentation(){}
 void Segmentation::doSegmentation(){
 
    // Start the clock
-   clock_t tStart = clock();
+   clock_t sv_start = clock();
 
    // Preparation of Input: Supervoxel Oversegmentation
    pcl::SupervoxelClustering<PointT> super (config_.voxel_resolution, config_.seed_resolution);
@@ -55,7 +55,6 @@ void Segmentation::doSegmentation(){
    super.setNormalImportance (config_.normal_importance);
    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
 
-   PCL_INFO ("Extracting supervoxels...\n");
    super.extract (supervoxel_clusters);
 
    if (config_.use_supervoxel_refinement)
@@ -68,7 +67,8 @@ void Segmentation::doSegmentation(){
    std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
    super.getSupervoxelAdjacency (supervoxel_adjacency);
    pcl::PointCloud<pcl::PointNormal>::Ptr sv_centroid_normal_cloud = pcl::SupervoxelClustering<PointT>::makeSupervoxelNormalCloud (supervoxel_clusters);
-   printf("Super-voxel segmentation takes: %.2fms\n", (double)(clock() - tStart)/(CLOCKS_PER_SEC/1000));
+   clock_t sv_end = clock();
+   printf("Super-voxel segmentation takes: %.2fms\n", (double)(sv_end - sv_start)/(CLOCKS_PER_SEC/1000));
 
    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
    // Constrained plane extraction
@@ -112,7 +112,7 @@ void Segmentation::doSegmentation(){
    // Plane hypothesis generation using random sampling
    if (config_.use_random_sampling){
       std::cout << "Randomly sampling plane hypotheses...\n";
-      int max_random_hyps = 100;
+      int max_random_hyps = 1000;
       int count = 0;
       int num_supervoxels = supervoxel_clusters.size ();
       srand(time(NULL));
@@ -127,7 +127,7 @@ void Segmentation::doSegmentation(){
 
          std::set<int> test_points;
          test_points.insert((int)(rand()%num_supervoxels+1));
-         bool good_model = model_p->doSamplesVerifyModel(test_points, plane_par, config_.outlier_cost*0.5);
+         bool good_model = model_p->doSamplesVerifyModel(test_points, plane_par, config_.noise_threshold*0.5);
          if (good_model == false) continue;
 
          Eigen::Vector3f hough_par;
@@ -153,7 +153,6 @@ void Segmentation::doSegmentation(){
       }
    }
 
-   std::cout << "Total number of plane hypotheses generated = " << planes_coeffs.size() << "\n";
    // Assign points to planes.
    uint32_t node_ID = 0;
    std::map<uint32_t, uint32_t> label2index;
@@ -206,26 +205,26 @@ void Segmentation::doSegmentation(){
    }
    delete [] accumulator;
 
-   std::cout << "Number of plane candidates remained after hough-based filtering = " << plane_candidates.size() << "\n";
-
    // Compute plane unary costs
+   float min_num_supervoxel_per_plane = config_.min_plane_area/(config_.seed_resolution*config_.seed_resolution/4/M_PI);
    std::vector<Eigen::Vector4f> good_planes;
-   std::vector<Eigen::VectorXf> planes_inliers_idx;
+   std::vector<Eigen::VectorXi> planes_inliers_idx;
    std::vector<float> unaries;
    uint32_t num_planes = plane_candidates.size();
-   Eigen::MatrixXf inliers_mat(num_planes, num_super_voxels);
+   Eigen::MatrixXi inliers_mat(num_planes, num_super_voxels);
    Eigen::MatrixXf normals_mat(num_planes, num_super_voxels);
    Eigen::MatrixXf point2plane_mat(num_planes, num_super_voxels);
    int count_idx = 0;
-   for (size_t j = 0; j<num_planes; ++j){
+   for (int j = 0; j<num_planes; ++j){
       Eigen::Vector4f p_coeffs = plane_candidates.at(j);
+
       Eigen::Vector3f p_normal;
       p_normal[0] = p_coeffs[0];
       p_normal[1] = p_coeffs[1];
       p_normal[2] = p_coeffs[2];
-      Eigen::VectorXf inliers_idx(num_super_voxels);
+      Eigen::VectorXi inliers_idx(num_super_voxels);
       Eigen::VectorXf point2plane(num_super_voxels);
-      inliers_idx = Eigen::VectorXf::Zero(num_super_voxels);
+      inliers_idx = Eigen::VectorXi::Zero(num_super_voxels);
       int inliers_count = 0;
       float plane_score = 0;
       for (size_t i = 0; i < num_super_voxels; ++i){
@@ -237,19 +236,23 @@ void Segmentation::doSegmentation(){
          n[0] = sv_centroid_normal_cloud->at(i).normal_x;
          n[1] = sv_centroid_normal_cloud->at(i).normal_y;
          n[2] = sv_centroid_normal_cloud->at(i).normal_z;
+
          // Distance from a point to a plane is scaled with a weight measuring the difference between point and plane normals.
          float p2p_dis = pcl::pointToPlaneDistance(p,p_coeffs);
-         float angle_dis = std::exp((1 - std::fabs(n.dot(p_normal)))/0.1);
-         angle_dis = std::min(angle_dis, 10.0f);
-         if (std::isnan(p2p_dis)) p2p_dis = config_.outlier_cost;
-         if (std::isnan(angle_dis)) angle_dis = 1;
-         float data_cost = p2p_dis*angle_dis;
-         plane_score += std::exp(-data_cost/config_.outlier_cost);
+         if (std::isnan(p2p_dis)) p2p_dis = config_.noise_threshold;
+	 float dotprod = std::fabs(n.dot(p_normal));
+         if (std::isnan(dotprod)) dotprod = 0;
+         float normal_dis = dotprod < 0.8 ? 100 : 1;
+         float data_cost = p2p_dis*normal_dis;
+         plane_score += -std::exp(-data_cost/(2*config_.noise_threshold)); // -1 is best, 0 is worst
          point2plane(i) = data_cost;
-         if (data_cost <= config_.outlier_cost) { inliers_idx(i) = 1; inliers_count++;}
+         if (data_cost <= config_.noise_threshold) {
+	 	inliers_idx(i) = 1;
+		inliers_count++;
+	 }
       }
-      plane_score = exp(-plane_score/(config_.min_inliers_per_plane*10)) - 1;
-      float confidence_threshold = -0.1;
+      plane_score = plane_score/(min_num_supervoxel_per_plane*10); 	
+      float confidence_threshold = -0.1f;
       if (plane_score <= confidence_threshold){
          inliers_mat.row(count_idx) = inliers_idx;
          normals_mat.row(count_idx) << p_coeffs(0), p_coeffs(1), p_coeffs(2);
@@ -261,52 +264,46 @@ void Segmentation::doSegmentation(){
          count_idx++;
       }
    }
-   printf("End plane generation: %.2fms\n", (double)(clock() - tStart)/(CLOCKS_PER_SEC/1000));
+   clock_t plane_sampling_end = clock();
+   printf("Plane generation takes: %.2fms\n", (double)(plane_sampling_end - sv_end)/(CLOCKS_PER_SEC/1000));
    num_planes = unaries.size();
+   std::cout << "Number of plane candidates = " << num_planes << "\n";
    if (num_planes > 1){
-
       inliers_mat.conservativeResize(num_planes, num_super_voxels);
       normals_mat.conservativeResize(num_planes, num_super_voxels);
       point2plane_mat.conservativeResize(num_planes, num_super_voxels);
 
-      Eigen::VectorXf inliers_count = inliers_mat.rowwise().sum();
-      Eigen::MatrixXf temp1 = inliers_mat.transpose();
-      Eigen::MatrixXf ov_mat = inliers_mat*temp1;
-      Eigen::MatrixXf temp2 = normals_mat.transpose();
-      Eigen::MatrixXf dot_mat = normals_mat*temp2;
-
-      Eigen::VectorXf plane_unaries = Eigen::Map<Eigen::MatrixXf> (unaries.data(), num_planes, 1);
+      Eigen::VectorXi inliers_count = inliers_mat.rowwise().sum();
+      Eigen::MatrixXi ov_mat = inliers_mat*inliers_mat.transpose();
+      Eigen::MatrixXf dot_mat = normals_mat*normals_mat.transpose();
+     
+      Eigen::VectorXf plane_unaries = Eigen::Map<Eigen::MatrixXf>(unaries.data(), num_planes, 1);
       Eigen::MatrixXf plane_pairwises = Eigen::MatrixXf::Zero(num_planes, num_planes);
 
       for (int i=0; i<num_planes-1; i++){
          for (int j=i+1; j<num_planes; j++){
-            double ov_cost = ov_mat(i,j)/std::min(inliers_count(i), inliers_count(j));
-            if (ov_cost > 0.25) ov_cost = 2.0;
-            double angle = acos(dot_mat(i,j))*180/3.14159265359;
-            if (isnan(angle)) angle = 45;
-            else angle = std::min(angle, 180 - angle);
-            double angle_disparity = std::min(angle, 90 - angle);
-            double angle_cost = 1 - std::exp(-angle_disparity/10);
-            double p_cost = 0;
-            if (ov_cost == 0) p_cost = 0; // If the two planes do not intersect, we do not constraint them!
-            else p_cost = 0.5*angle_cost + 0.5*ov_cost;
-            
-            if (isnan(p_cost)) p_cost = 1;   
+            double ov_cost = (double)ov_mat(i,j)/std::min(inliers_count(i), inliers_count(j)); 
+            //if (ov_cost > 0.75) ov_cost = 1.0;
+            //else ov_cost = 0;
+	    double dot_prod = std::abs(dot_mat(i,j));
+            dot_prod = dot_prod < 0.5 ? dot_prod : 1 - dot_prod;
+            double angle_cost = 1 - exp(-dot_prod/0.25);
+            double p_cost;
+            if (ov_cost == 0) p_cost = 0; // TODO: If the two planes do not intersect, we do not constraint them!
+            else p_cost = angle_cost; ;//0.5*angle_cost + 0.5*ov_cost;
             plane_pairwises(i,j) = p_cost*0.5;
             plane_pairwises(j,i) = p_cost*0.5;
          }
       }
 
-      Eigen::VectorXf initLabeling(num_planes);
-      initLabeling = Eigen::VectorXf::Ones(num_planes);
-      Eigen::VectorXf finalLabeling(num_planes);
+      Eigen::VectorXi initLabeling(num_planes);
+      initLabeling = Eigen::VectorXi::Ones(num_planes);
+      Eigen::VectorXi finalLabeling(num_planes);
       double finalEnergy = 0;
-      std::cout << "Selecting supporting planes \n";
       LSA_TR(&finalEnergy, &finalLabeling, num_planes, plane_unaries, plane_pairwises, initLabeling);
-
       if (finalEnergy == 0){
          PCL_WARN("Optimization got stuck \n");
-         finalLabeling = Eigen::VectorXf::Ones(num_planes);
+         finalLabeling = Eigen::VectorXi::Ones(num_planes);
       }
 
       int num_selected_planes = finalLabeling.sum();
@@ -325,19 +322,40 @@ void Segmentation::doSegmentation(){
       // Outlier data cost
       int num_labels = num_selected_planes + 1;
       outlier_label = 0;
-      unary_matrix.row(outlier_label) = Eigen::VectorXf::Ones(num_super_voxels)*((config_.outlier_cost*config_.gc_scale));
+      unary_matrix.row(outlier_label) = Eigen::VectorXf::Ones(num_super_voxels)*((config_.noise_threshold*config_.gc_scale));
       Eigen::MatrixXi unary_matrix_int = unary_matrix.cast<int>();
       int *data_cost = new int[num_super_voxels*num_labels];
       Eigen::Map<Eigen::MatrixXi>(data_cost, unary_matrix_int.rows(), unary_matrix_int.cols() ) = unary_matrix_int;
       GCoptimizationGeneralGraph *gc = new GCoptimizationGeneralGraph(num_super_voxels, num_labels);
       gc->setDataCost(data_cost);
+      
+      for ( int l1 = 0; l1 < num_labels; l1++){
+      	for (int l2 = 0; l2 < num_labels; l2++){
+            if (l1==0) gc->setSmoothCost(l1,l2,0);
+            if (l1==l2) gc->setSmoothCost(l1,l2,0);
+            else {
+		gc->setSmoothCost(l1,l2,1);
+            }
+        }
+      }
 
       std::multimap<uint32_t,uint32_t>::iterator adjacency_itr = supervoxel_adjacency.begin();
+      float smooth_cost = config_.noise_threshold/2;
       for ( ; adjacency_itr != supervoxel_adjacency.end(); ++adjacency_itr)
       {
          uint32_t node1 = label2index[adjacency_itr->first];
          uint32_t node2 = label2index[adjacency_itr->second];
-         int edge_weight = (int)(config_.gc_scale*config_.smooth_cost);
+ 	 Eigen::Vector3f n1;
+      	 n1[0] = sv_centroid_normal_cloud->at(node1).normal_x;
+	 n1[1] = sv_centroid_normal_cloud->at(node1).normal_y;
+         n1[2] = sv_centroid_normal_cloud->at(node1).normal_z;
+         Eigen::Vector3f n2;
+         n2[0] = sv_centroid_normal_cloud->at(node2).normal_x;
+         n2[1] = sv_centroid_normal_cloud->at(node2).normal_y;
+         n2[2] = sv_centroid_normal_cloud->at(node2).normal_z;
+         float w = std::fabs(n1.dot(n2));
+         if (w < 0.75) w = 0.0f;
+         int edge_weight = (int)(w * config_.gc_scale * smooth_cost);
          gc->setNeighbors(node1,node2,edge_weight);
       }
       try{
@@ -356,8 +374,9 @@ void Segmentation::doSegmentation(){
      // End of constrained plane extraction
      //////////////////////////////////////////////////////////////////////////////////////////////////////////////
       }
+      clock_t plane_fitting_end = clock();
+      printf("Global plane extraction takes: %.2fms\n", (double)(plane_fitting_end - plane_sampling_end)/(CLOCKS_PER_SEC/1000));
    }
-   printf("End constrained plane extraction: %.2fms\n", (double)(clock() - tStart)/(CLOCKS_PER_SEC/1000));
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Segment the point cloud into objects
@@ -401,15 +420,14 @@ void Segmentation::doSegmentation(){
          n2[0] = sv_centroid_normal_cloud->at(to).normal_x;
          n2[1] = sv_centroid_normal_cloud->at(to).normal_y;
          n2[2] = sv_centroid_normal_cloud->at(to).normal_z;
+         
          if (label_from != label_to) continue;
          if (label_from == label_to && label_from != outlier_label){
             add_edge(from,to,G);
             continue;
          }
-
          bool convex = isConvex(p1, n1, p2, n2);
-         if (convex == false) continue;
-         add_edge(from,to,G);
+         if (convex == true) add_edge(from,to,G);
       }
 
       std::vector<uint32_t> component(num_vertices(G));
@@ -444,8 +462,8 @@ void Segmentation::doSegmentation(){
    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>::iterator cluster_itr_ = supervoxel_clusters.begin();
    uint32_t idx = 0;
    for (; cluster_itr_ != supervoxel_clusters.end(); cluster_itr_++){
+      //label_to_seg_map[cluster_itr_->first] = sv_labels.at(idx); // Use this to plot plane segmentation only
       label_to_seg_map[cluster_itr_->first] = supervoxel_labels.at(idx);
-      //label_to_seg_map[cluster_itr_->first] = sv_labels.at(idx);
       idx++;
    }
    typename pcl::PointCloud<pcl::PointXYZL>::iterator point_itr = (*segmented_cloud_ptr_).begin();
@@ -458,7 +476,7 @@ void Segmentation::doSegmentation(){
          point_itr->label = label_to_seg_map[point_itr->label];
       }
    }
-   printf("All Time taken: %.2fms\n", (double)(clock() - tStart)/(CLOCKS_PER_SEC/1000));
+   printf("All Time taken: %.2fms\n", (double)(clock() - sv_start)/(CLOCKS_PER_SEC/1000));
 
 
 }

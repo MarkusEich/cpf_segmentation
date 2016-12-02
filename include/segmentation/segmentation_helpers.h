@@ -15,7 +15,7 @@ int isColorSimilar(Eigen::Vector3i c1, Eigen::Vector3i c2)
 
 bool isConvex(Eigen::Vector3f p1, Eigen::Vector3f n1, Eigen::Vector3f p2, Eigen::Vector3f n2)
 {
-	float concavity_tolerance_threshold = 20;
+	float concavity_tolerance_threshold = 10;
 	const Eigen::Vector3f& source_centroid = p1;
 	const Eigen::Vector3f& target_centroid = p2;
 
@@ -39,9 +39,9 @@ bool isConvex(Eigen::Vector3f p1, Eigen::Vector3f n1, Eigen::Vector3f p2, Eigen:
 
   	// Smoothness Check: Check if there is a step between adjacent patches
 	bool use_smoothness_check = true;
-	float seed_resolution = 0.1f; 
+	float seed_resolution = 0.081f; 
 	float smoothness_threshold = 0.1;
-	float voxel_resolution = 0.05;
+	float voxel_resolution = 0.008;
 	if (use_smoothness_check)
 	{
 		float expected_distance = ncross.norm () * seed_resolution;
