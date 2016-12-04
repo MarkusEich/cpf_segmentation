@@ -38,7 +38,7 @@
 
 #include <pcl/console/parse.h>
 #include <pcl/point_types.h>
-#include <pcl/visualization/pcl_visualizer.h>    
+#include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/io/openni_grabber.h>
 #include <segmentation/segmentation.hpp>
 #include <pcl/filters/fast_bilateral.h>
@@ -63,13 +63,13 @@ void cloud_cb_ (const PointCloudT::ConstPtr &callback_cloud, PointCloudT::Ptr& c
   *new_cloud_available_flag = true;
   cloud_mutex.unlock ();
 }
-  
+
 int main (int argc, char** argv)
 {
 
   Segmentation seg;
   Config config;
-  config.voxel_resolution = 0.01; // 1 cm
+  config.voxel_resolution = 0.001; // 1 cm
   config.seed_resolution = 0.05; // 5 cm
   config.use_single_cam_transform = true;
   config.min_inliers_per_plane = 25;
@@ -87,7 +87,7 @@ int main (int argc, char** argv)
   interface->start ();
 
   // Wait for the first frame:
-  while(!new_cloud_available_flag) 
+  while(!new_cloud_available_flag)
     boost::this_thread::sleep(boost::posix_time::milliseconds(1));
   new_cloud_available_flag = false;
 
@@ -108,14 +108,14 @@ int main (int argc, char** argv)
       viewer.removeAllShapes();
 
       pcl::visualization::PointCloudColorHandlerRGBField<PointT> rgb(cloud);
-      
+
       pcl::PointCloud<PointT>::Ptr cloud_filtered (new pcl::PointCloud<PointT>);
-      pcl::FastBilateralFilter<PointT> bFilter; 
-      bFilter.setInputCloud(cloud); 
+      pcl::FastBilateralFilter<PointT> bFilter;
+      bFilter.setInputCloud(cloud);
       bFilter.setSigmaS(5);
       bFilter.setSigmaR(0.2);
-      bFilter.applyFilter(*cloud_filtered); 
-      
+      bFilter.applyFilter(*cloud_filtered);
+
       viewer.addPointCloud<PointT> (cloud, rgb, "input_cloud");
       viewer.spinOnce();
 
@@ -130,7 +130,7 @@ int main (int argc, char** argv)
 
       BOOST_FOREACH (pcl::PointXYZL point, *segmented_cloud_ptr) {
       	if (point.label == 0) continue;
-        segmented_cloud2.push_back(point); 
+        segmented_cloud2.push_back(point);
       }
       pcl::PointCloud<pcl::PointXYZL>::Ptr segmented_cloud2_ptr = segmented_cloud2.makeShared();
       seg_viewer.removeAllPointClouds();

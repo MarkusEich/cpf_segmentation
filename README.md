@@ -1,7 +1,7 @@
 # cpf_segmentation
 C++ library for unsupervised segmentation of 3D points via Constrained Plane Fitting.
 
-To compile and use the library go to the src folder and 
+To compile and use the library go to the src folder and
 
 ```
 mkdir build
@@ -19,10 +19,10 @@ To verify that everyting is set up properly use
 pkg-config --list-all | grep segmentation
 ```
 
-To test the library, run 
+To test the library, run
 
 ```
-segmentation_test pointcloud.pcd 
+./segmentation_test ../test_data/tum_small.pcd
 ```
 
 If you want to cite this work, you can use the bibtex entry below
@@ -61,5 +61,3 @@ title = {{Geometrically Consistent Plane Extraction for Dense Indoor 3D Maps Seg
 year = {2016}
 }
 ```
-
-
