@@ -34,18 +34,16 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/gco-v3.0)
 #add_library (LinkedBlockList gco-v3.0/LinkedBlockList.cpp)
 #add_library (GCoptimization gco-v3.0/GCoptimization.cpp)
 
-
 add_library (segmentation SHARED src/segmentation.cpp gco-v3.0/maxflow.cpp gco-v3.0/maxflow.cpp gco-v3.0/LinkedBlockList.cpp gco-v3.0/GCoptimization.cpp gco-v3.0/graph.cpp ${HEADERS})
 target_link_libraries (segmentation ${PCL_LIBRARIES})
 
 add_executable (segmentation_test src/segmentation_test.cpp)
 target_link_libraries (segmentation_test ${PCL_LIBRARIES} segmentation)
 
-add_executable (segmentation_kinect_test src/segmentation_kinect_test.cpp)
-target_link_libraries (segmentation_kinect_test ${PCL_LIBRARIES} segmentation)
+#add_executable (segmentation_kinect_test src/segmentation_kinect_test.cpp)
+#target_link_libraries (segmentation_kinect_test ${PCL_LIBRARIES} segmentation)
 
 CONFIGURE_FILE(./src/segmentation.pc.in segmentation.pc @ONLY)
-
 
 install(TARGETS segmentation segmentation_test
   RUNTIME DESTINATION bin 
